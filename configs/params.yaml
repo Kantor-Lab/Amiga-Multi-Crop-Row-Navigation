@@ -3,8 +3,8 @@
 # sub
 # simulation
 frontColor_topic: '/left/color/image_raw'
-frontDepth_topic: '/left/depth/image_rect_raw'
-frontCameraInfo_topic: '/left/color/camera_info'
+frontDepth_topic: '/left/aligned_depth_to_color/image_raw'
+frontCameraInfo_topic: '/left/aligned_depth_to_color/camera_info'
 # frontColor_topic: '/hefty_left/rgb/image_raw'
 # frontDepth_topic: '/hefty_left/stereo/image_raw'
 # frontCameraInfo_topic: '/hefty_left/rgb/camera_info'

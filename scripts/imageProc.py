@@ -262,14 +262,23 @@ class imageProc:
 
             if len(plantsInCropRow) >= 2:
                 # flipped points
+                # print(plantsInCropRow)
                 ptsFlip = np.flip(plantsInCropRow, axis=1)
+                # print(ptsFlip)
                 # get line at scanning window
                 xM, xB = getLineRphi(ptsFlip)
                 t_i, b_i = lineIntersectImgUpDown(xM, xB, self.imgHeight)
-                l_i, r_i = lineIntersectImgSides(xM, xB, self.imgHeight)
+                l_i, r_i = lineIntersectImgSides(xM, xB, self.imgWidth)
+                # print(xM, xB)
                 # print("row ID:", boxIdx, t_i, b_i, l_i, r_i )
                 # if the linefit does not return None and the line-image intersections
                 # are within the image bounds
+                pixels = self.get_pixels(t_i=t_i, b_i=b_i)
+                points_in_3d = []
+                for i in range(pixels.shape[0]):
+                    point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
+                    points_in_3d.append(point_in_3d)
+                print("points in 3d", points_in_3d)
                 if xM is not None and b_i >= 0 and b_i <= self.imgWidth:
                     lines[boxIdx, :] = [xB, xM]
                     # store the window location, which generated these line
@@ -543,3 +552,14 @@ class imageProc:
 
         return new_line
         # print("bufferzone", bufferzone)
+
+    def get3dpoints(self, depthImg, pixels):
+        depths = depthImg[pixels[0], pixels[1]]
+        print("depth:", depths)
+        points_in_3d = np.array([self.imgWidth- pixels[1], pixels[0], depths]).T
+        return points_in_3d
+    
+    def get_pixels(self, t_i, b_i):
+        pixels = np.array([[0, t_i], [self.imgHeight - 1, b_i]])
+        pixels = pixels.astype('int32')
+        return pixels

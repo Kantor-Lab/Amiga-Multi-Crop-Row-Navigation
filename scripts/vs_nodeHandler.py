@@ -286,7 +286,7 @@ class vs_nodeHandler:
 
     def frontSyncCallback(self, rgbImage, depthImage, camera_info_msg):
         # self.cameraModel.fromCameraInfo(camera_info_msg)
-        # print(self.bridge.imgmsg_to_cv2(depthImage, "32FC1").shape)
+        # print(self.bridge.imgmsg_to_cv2(depthImage, "32FC1")[479][320])
         try:
             # Convert your ROS Image message to OpenCV2
             self.frontImg = self.bridge.imgmsg_to_cv2(rgbImage, "bgr8")
@@ -352,6 +352,7 @@ class vs_nodeHandler:
         """
         # get and set new image from the ROS topic
         self.frontImg = self.bridge.imgmsg_to_cv2(data, desired_encoding='rgb8')
+        # print("frontimage shape",self.frontImg.shape)
         # get image size
         self.imgHeight, self.imgWidth, self.imgCh = self.frontImg.shape
         # if the image is not empty
