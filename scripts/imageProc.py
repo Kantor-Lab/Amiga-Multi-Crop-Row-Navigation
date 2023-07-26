@@ -9,7 +9,7 @@ import itertools
 
 from torch import zero_
 from cv_bridge import CvBridge
-
+from transforms import TfBuffer, Transformer
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
@@ -31,6 +31,7 @@ class imageProc:
         self.contourParams = contourParams
         self.scannerParams = scannerParams
         self.trackerParams = trackerParams
+        self.transformer = Transformer(TfBuffer().get_tf_buffer())
 
         self.reset()
 
@@ -274,11 +275,13 @@ class imageProc:
                 # if the linefit does not return None and the line-image intersections
                 # are within the image bounds
                 pixels = self.get_pixels(t_i=t_i, b_i=b_i)
-                points_in_3d = []
+                points = np.zeros((2, 3))
                 for i in range(pixels.shape[0]):
-                    point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
-                    points_in_3d.append(point_in_3d)
-                print("points in 3d", points_in_3d)
+                    point = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
+                    points[i] = point
+                points3d = self.transformer.transform_cam_to_base_arr(points)
+                print(points3d)
+                print("points in 3d", points)
                 if xM is not None and b_i >= 0 and b_i <= self.imgWidth:
                     lines[boxIdx, :] = [xB, xM]
                     # store the window location, which generated these line
@@ -556,10 +559,10 @@ class imageProc:
     def get3dpoints(self, depthImg, pixels):
         depths = depthImg[pixels[0], pixels[1]]
         print("depth:", depths)
-        points_in_3d = np.array([self.imgWidth- pixels[1], pixels[0], depths]).T
+        points_in_3d = np.array([pixels[1], pixels[0], depths]).T
         return points_in_3d
     
     def get_pixels(self, t_i, b_i):
-        pixels = np.array([[0, t_i], [self.imgHeight - 1, b_i]])
+        pixels = np.array([[0, b_i], [self.imgHeight - 1, t_i]])
         pixels = pixels.astype('int32')
         return pixels

@@ -299,10 +299,10 @@ class vs_nodeHandler:
             cv_depth = self.bridge.imgmsg_to_cv2(depthImage, "passthrough")
             # Convert the depth image to a Numpy array since most cv functions
             # require Numpy arrays.
-            self.frontDepth = np.array(cv_depth, dtype=np.float32)
+            self.frontDepth = np.array(cv_depth * 0.001, dtype=np.float32)
             # Normalize the depth image to fall between 0 (black) and 1 (white)
-            cv.normalize(self.frontDepth, self.frontDepth,
-                          0.0, 1.0, cv.NORM_MINMAX)
+            # cv.normalize(self.frontDepth, self.frontDepth,
+                        #   0.0, 1.0, cv.NORM_MINMAX)
         except CvBridgeError as e:
             print(e)
 
