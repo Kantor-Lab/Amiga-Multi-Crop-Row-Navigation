@@ -2,18 +2,21 @@
 
 # sub
 # simulation
-frontColor_topic: '/left/color/image_raw'
-frontDepth_topic: '/left/depth/image_rect_raw'
-frontCameraInfo_topic: '/left/color/camera_info'
-# frontColor_topic: '/hefty_left/rgb/image_raw'
-# frontDepth_topic: '/hefty_left/stereo/image_raw'
-# frontCameraInfo_topic: '/hefty_left/rgb/camera_info'
+
+# frontColor_topic: '/rs_right/camera/color/image_raw'
+# frontDepth_topic: '/rs_right/camera/aligned_depth_to_color/image_raw'
+# frontCameraInfo_topic: '/rs_right/camera/aligned_depth_to_color/camera_info'
+
+frontColor_topic: '/oak/rgb/image_raw'
+frontDepth_topic: '/oak/stereo/image_raw'
+frontCameraInfo_topic: '/oak/rgb/camera_info'
+
 # frontColor_topic: '/realsense/color/image_raw'
 # frontDepth_topic: '/realsense/depth/image_rect_raw'
 # frontCameraInfo_topic: '/realsense/color/camera_info'
-backColor_topic: '/left/color/image_raw'
-backDepth_topic: '/left/depth/image_rect_raw'
-backCameraInfo_topic: '/left/color/camera_info'
+backColor_topic: '/hefty_left/color/image_raw'
+backDepth_topic: '/hefty_left/depth/image_rect_raw'
+backCameraInfo_topic: '/hefty_left/color/camera_info'
 
 # thorvald
 # frontColor_topic: '/rs_nav_front/color/image_raw'
@@ -39,8 +42,10 @@ update rate: 30
 queue_size: 5
 # processed image size scale
 imgResizeRatio: 100
+hsv_extraction: False
 # for filtering contours
-minContourArea: 200
+# minContourArea: 200
+minContourArea: 3000 #soybean small 500 too much
 # stationary debug mode, (without publishing velocity)
 stationaryDebug: False
 # run time params
@@ -66,13 +71,13 @@ minKeypointNum: 5
 # scanner window params
 scanSteps: 2
 scanStartPoint: 0
-scanEndPoint: 640
-scanWindowWidth: 320
+scanEndPoint: 1280
+scanWindowWidth: 640
 # tracker params
-trackingBoxWidth: 320
+trackingBoxWidth: 640
 topOffset: 0
 bottomOffset: 0
-sacleRatio: 0.25
+sacleRatio: 0.2
 # for dividing bushy rows
 maxCoutourHeight: 120
 #  in case of using bigger size image size, we suggest to set ROI 

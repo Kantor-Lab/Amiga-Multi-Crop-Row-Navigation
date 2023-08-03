@@ -41,7 +41,7 @@ class imageProc:
         self.pointsInBottom = 0
 
         # parameters
-        self.bushy = False
+        self.bushy = True
         self.CropRows = []
         self.primaryRGBImg = []
         self.cropLaneFound = False
@@ -63,9 +63,10 @@ class imageProc:
         self.trackingWindowOffsBottom = 0
         self.trackingWindowTopScaleRatio = 0.4  # scales the top of the window
 
-        self.imgHeight, self.imgWidth = 720, 1280# realsense->480, 640, oakd->720, 1280
-
+        # self.imgHeight, self.imgWidth = 480, 640
+        # self.imgHeight, self.imgWidth = 720, 1280
         # steps create linspace
+        self.imgHeight, self.imgWidth = 1032, 1384
         self.scanFootSteps = np.linspace(self.scannerParams["scanStartPoint"],
                                          self.scannerParams["scanEndPoint"],
                                          self.scannerParams["scanWindowWidth"])
@@ -88,7 +89,7 @@ class imageProc:
         # if crop canopy type is busshy like Coriander
         self.bushy = bushy
         
-        # check if current image is not Empty or Noneoak/rgb
+        # check if current image is not Empty or None
         if self.primaryRGBImg is None or len(self.primaryRGBImg) == 0:
             print("[bold red]#[ERR][/] CR-Scanner - Image is None, Check Topics or the Sensor !")
         else:
@@ -262,28 +263,14 @@ class imageProc:
 
             if len(plantsInCropRow) >= 2:
                 # flipped points
-                # print(plantsInCropRow)
                 ptsFlip = np.flip(plantsInCropRow, axis=1)
-                # print(ptsFlip)
                 # get line at scanning window
                 xM, xB = getLineRphi(ptsFlip)
                 t_i, b_i = lineIntersectImgUpDown(xM, xB, self.imgHeight)
-                l_i, r_i = lineIntersectImgSides(xM, xB, self.imgWidth)
-                # print(xM, xB)
+                l_i, r_i = lineIntersectImgSides(xM, xB, self.imgHeight)
                 # print("row ID:", boxIdx, t_i, b_i, l_i, r_i )
                 # if the linefit does not return None and the line-image intersections
                 # are within the image bounds
-
-                
-                # pixels = self.get_pixels(t_i=t_i, b_i=b_i)
-                # points_in_3d = []
-                # for i in range(pixels.shape[0]):
-                #     point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
-                #     points_in_3d.append(point_in_3d)                   
-                # print("points in 3d", points_in_3d)
-                
-                
-                
                 if xM is not None and b_i >= 0 and b_i <= self.imgWidth:
                     lines[boxIdx, :] = [xB, xM]
                     # store the window location, which generated these line
@@ -425,34 +412,25 @@ class imageProc:
         """
         # change datatype to enable negative values for self.greenIDX calculation
         rgbImg = rgbImg.astype('int32')
-        
-        cols_top = [self.imgWidth*4/11, self.imgWidth*8/11] #self.imgHeight, self.imgWidth
-        cols_bottom = [self.imgWidth/10, self.imgWidth*9/10]        #LEFT corner & RIGHT corner
-
-        points_mask = np.array([[cols_top[0], 0], [cols_top[1], 0], [cols_bottom[1], self.imgHeight], [cols_bottom[0], self.imgHeight]])
-        # mask = np.ones(rgbImg.shape, dtype=np.uint8)
-        mask = np.zeros_like(rgbImg)
-        cv.fillPoly(mask, pts=np.int32([points_mask]), color=(255, 255, 255))
-
-        rgbImg = cv.bitwise_and(rgbImg, mask)
-
-        
-        # for i in range(3):
-        #     for j in range(50,290):
-        #         rgbImg[j, : 290 - j -50, i] = 0
-        #         rgbImg[j, -1:j - 350:-1 ,i] = 0 
-        # rgbImg[:50, :240, :3] = 0
-        # rgbImg[:50, 370:640, :3] = 0
+        #LEFT corner & RIGHT corner
+        for i in range(3):
+            for j in range(50,290):
+                rgbImg[j, : 290 - j -50, i] = 0
+                rgbImg[j, -1:j - 350:-1 ,i] = 0 
+        rgbImg[:50, :640, :3] = 0
+        # rgbImg[:1032, :300, :3] = 0
+        # rgbImg[:1032, 1000:1384, :3] = 0
+        rgbImg[:480, :200, :3] = 0
+        rgbImg[:50, 370:640, :3] = 0
         
         #SPLIT MASK
-        for i in range(40, self.imgHeight, 30):
-            rgbImg[i: i+15, :self.imgWidth, :3] = 0
+        for i in range(40, 640, 30):
+            rgbImg[i: i+15, :640, :3] = 0
         
         # apply ROI
         rgbImg = self.applyROI(rgbImg)
         #  get green index and binary mask (Otsu is used for extracting the green)
         mask, greenIDX = self.getExgMask(rgbImg)
-        print("green index", greenIDX.shape)
         # plt.imshow(mask)
         # plt.show()
         # find contours
@@ -473,15 +451,13 @@ class imageProc:
 
         _img = _img.astype('int32')
 
-        if (self.contourParams['hsv_extraction']):
-            _img_color = _img.astype('uint8')
-            _hsv_image = cv.cvtColor(_img_color, cv.COLOR_RGB2HSV)
+        if (HSV_EXTRACTION):
+            _hsv_image = cv.cvtColor(_img, cv.COLOR_RGB2HSV)
             h = _hsv_image[:, :, 0]
             s = _hsv_image[:, :, 1]
             v = _hsv_image[:, :, 2]
 
-            greenIDX = h
-            greenIDX[np.logical_or(h < 30, h > 90)] = 0
+            greenIDX[np.logical_and(h > 30, h < 90)] = 0
         else:
             # Vegetation Mask
             r = _img[:, :, 0]
@@ -581,14 +557,3 @@ class imageProc:
 
         return new_line
         # print("bufferzone", bufferzone)
-
-    def get3dpoints(self, depthImg, pixels):
-        depths = depthImg[pixels[0], pixels[1]]
-        print("depth:", depths)
-        points_in_3d = np.array([self.imgWidth- pixels[1], pixels[0], depths]).T
-        return points_in_3d
-    
-    def get_pixels(self, t_i, b_i):
-        pixels = np.array([[0, t_i], [self.imgHeight - 1, b_i]])
-        pixels = pixels.astype('int32')
-        return pixels

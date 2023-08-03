@@ -119,6 +119,7 @@ class vs_nodeHandler:
         self.contourParams = {
             "imgResizeRatio": rospy.get_param('imgResizeRatio'),
             "minContourArea": rospy.get_param('minContourArea'),
+            "hsv_extraction": rospy.get_param('hsv_extraction')
         }
 
         self.featureParams = {
@@ -290,6 +291,12 @@ class vs_nodeHandler:
         try:
             # Convert your ROS Image message to OpenCV2
             self.frontImg = self.bridge.imgmsg_to_cv2(rgbImage, "bgr8")
+
+            # Crop image to move it to the right
+            # self.frontImg[:, 100:, :] = self.frontImg[:, :self.imgWidth - 100, :]
+            # self.frontImg[:100] = 0
+
+            print(self.frontImg.shape)
         except CvBridgeError as e:
             print(e)
         try:

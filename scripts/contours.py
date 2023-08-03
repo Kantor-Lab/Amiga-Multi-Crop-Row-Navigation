@@ -40,12 +40,18 @@ def getPlantMasks(binrayMask, min_contour_area, bushy=False):
         # filter contours based on size
         # self.filtered_contours = contours
         filtered_contours = list()
+        # print("countour area", np.amax(cv.contourArea(np.array(contours))))
         for i in range(len(contours)):
             # print(contours[i])
             # contours[i] = contours[i].astype(np.int32)
             
-            if cv.contourArea(contours[i]) > min_contour_area:
-                
+            #import pdb
+            #pdb.set_trace()
+            contour_centroid = np.mean(np.squeeze(np.array(contours[i]),1),axis=0)
+            scale = 1 #0.01 + contour_centroid[0] / 720 #480  #HACK
+            
+
+            if cv.contourArea(contours[i]) > min_contour_area*scale:
                 if bushy : 
                     cn_x, cn_y, cnt_w, cn_h = cv.boundingRect(contours[i])
 
