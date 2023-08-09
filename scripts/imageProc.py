@@ -9,6 +9,8 @@ import itertools
 
 from torch import zero_
 from cv_bridge import CvBridge
+import math
+from copy import deepcopy
 
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
@@ -64,6 +66,10 @@ class imageProc:
         self.trackingWindowTopScaleRatio = 0.4  # scales the top of the window
 
         self.imgHeight, self.imgWidth = 720, 1280# realsense->480, 640, oakd->720, 1280
+        self.depth_intrinsics = None  
+
+        self.line_ends_metric = None
+        self.plants_metric = None   
 
         # steps create linspace
         self.scanFootSteps = np.linspace(self.scannerParams["scanStartPoint"],
@@ -75,26 +81,27 @@ class imageProc:
         self.numOfCropRows = len(self.rowTrackingBoxes)
         self.bufferzone = np.zeros((20, 2))
 
-    def findCropLane(self, rgbImg, depthImg, mode='RGB-D', bushy=False):
+    def findCropLane(self, rgbImg, depthImg, camera_params, mode='RGB-D', bushy=False):
         """finds Crops Rows in the image based on RGB and depth data
         Args:
             bushy (bool, optional): _description_. Defaults to False.
         """
         self.primaryRGBImg = rgbImg.copy()
         self.primaryDepthImg = depthImg.copy()
+        self.depth_intrinsics = camera_params
         # plt.imshow(self.primaryDepthImg)
         # plt.show()
         self.imgHeight, self.imgWidth, self.imgChannels = rgbImg.shape
         # if crop canopy type is busshy like Coriander
         self.bushy = bushy
         
-        # check if current image is not Empty or Noneoak/rgb
+        # check if current image is not Empty or None
         if self.primaryRGBImg is None or len(self.primaryRGBImg) == 0:
             print("[bold red]#[ERR][/] CR-Scanner - Image is None, Check Topics or the Sensor !")
         else:
             # initial RGB image process to get mask GreenIDx and plant centers
             self.mask, self.greenIDX, self.plantObjects2D, self.plantCenters2D = self.processRGBImage(self.primaryRGBImg)
-            self.numPlantsInScene = len(self.plantCenters2D[0])
+            self.numPlantsInScene = len(self.plantCenters2D[0])            
         if not self.isInitialized:
             print("[bold blue]#[INF][/] Find Crop Lane")
             self.lines2D, self.linesROIs2D = self.findCropRows2D(self.primaryRGBImg)
@@ -271,19 +278,19 @@ class imageProc:
                 l_i, r_i = lineIntersectImgSides(xM, xB, self.imgWidth)
                 # print(xM, xB)
                 # print("row ID:", boxIdx, t_i, b_i, l_i, r_i )
+                # print("plantsInCropRow", np.array(plantsInCropRow))
+                self.plants_metric = self.get_3d_points(np.array(plantsInCropRow))
                 # if the linefit does not return None and the line-image intersections
                 # are within the image bounds
-
                 
                 # pixels = self.get_pixels(t_i=t_i, b_i=b_i)
                 # points_in_3d = []
                 # for i in range(pixels.shape[0]):
                 #     point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
-                #     points_in_3d.append(point_in_3d)                   
+                #     points_in_3d.append(point_in_3d)
                 # print("points in 3d", points_in_3d)
-                
-                
-                
+
+
                 if xM is not None and b_i >= 0 and b_i <= self.imgWidth:
                     lines[boxIdx, :] = [xB, xM]
                     # store the window location, which generated these line
@@ -393,6 +400,13 @@ class imageProc:
                     allLineIntersect[:, 0], self.imgHeight - self.trackerParams["bottomOffset"] * np.ones((len(self.CropRows), 1))]
                 self.allLineEnd = np.c_[
                     allLineIntersect[:, 1], self.trackerParams["topOffset"] * np.ones((len(self.CropRows), 1))]
+                
+                line_ends = self.remove_duplicates(np.vstack((self.allLineStart, self.allLineEnd)))
+                self.line_ends_metric = self.get_3d_points(line_ends)
+
+                print("self.allLineStart", self.allLineStart)
+                print("self.allLineEnd", self.allLineEnd)
+                print("metric_line_ends", self.line_ends_metric)
                 # main features
                 self.P = self.cameraToImage([avgOfLines[1], self.imgHeight])
                 self.ang = computeTheta(self.mainLine_up, self.mainLine_down)
@@ -425,7 +439,7 @@ class imageProc:
         """
         # change datatype to enable negative values for self.greenIDX calculation
         rgbImg = rgbImg.astype('int32')
-        
+
         cols_top = [self.imgWidth*4/11, self.imgWidth*8/11] #self.imgHeight, self.imgWidth
         cols_bottom = [self.imgWidth/10, self.imgWidth*9/10]        #LEFT corner & RIGHT corner
 
@@ -436,7 +450,7 @@ class imageProc:
 
         rgbImg = cv.bitwise_and(rgbImg, mask)
 
-        
+        # #LEFT corner & RIGHT corner
         # for i in range(3):
         #     for j in range(50,290):
         #         rgbImg[j, : 290 - j -50, i] = 0
@@ -452,7 +466,6 @@ class imageProc:
         rgbImg = self.applyROI(rgbImg)
         #  get green index and binary mask (Otsu is used for extracting the green)
         mask, greenIDX = self.getExgMask(rgbImg)
-        print("green index", greenIDX.shape)
         # plt.imshow(mask)
         # plt.show()
         # find contours
@@ -472,26 +485,14 @@ class imageProc:
         _img = img.copy()
 
         _img = _img.astype('int32')
+        # Vegetation Mask
+        r = _img[:, :, 0]
+        g = _img[:, :, 1]
+        b = _img[:, :, 2]
 
-        if (self.contourParams['hsv_extraction']):
-            _img_color = _img.astype('uint8')
-            _hsv_image = cv.cvtColor(_img_color, cv.COLOR_RGB2HSV)
-            h = _hsv_image[:, :, 0]
-            s = _hsv_image[:, :, 1]
-            v = _hsv_image[:, :, 2]
-
-            greenIDX = h
-            greenIDX[np.logical_or(h < 30, h > 90)] = 0
-        else:
-            # Vegetation Mask
-            r = _img[:, :, 0]
-            g = _img[:, :, 1]
-            b = _img[:, :, 2]
-
-            # calculate Excess Green Index and filter out negative values
-            greenIDX = 2*g - r - b
-            greenIDX[greenIDX < 0] = 0
-
+        # calculate Excess Green Index and filter out negative values
+        greenIDX = 2*g - r - b
+        greenIDX[greenIDX < 0] = 0
         greenIDX = greenIDX.astype('uint8')
 
         # Otsu's thresholding after gaussian smoothing
@@ -582,12 +583,74 @@ class imageProc:
         return new_line
         # print("bufferzone", bufferzone)
 
-    def get3dpoints(self, depthImg, pixels):
-        depths = depthImg[pixels[0], pixels[1]]
-        print("depth:", depths)
-        points_in_3d = np.array([self.imgWidth- pixels[1], pixels[0], depths]).T
-        return points_in_3d
+    def get_3d_points(self, pixels):
+        fx = self.depth_intrinsics[0]
+        fy = self.depth_intrinsics[1]
+        cx = self.depth_intrinsics[2]
+        cy = self.depth_intrinsics[3]
+        threshold_low = 0.01*1000
+        threshold_high = 5*1000
+        z_metric = []
+        metric_points = []
+        # import pdb
+        # pdb.set_trace()
+        for pixel_loc in pixels:
+            xmin, ymin, xmax, ymax = self.generate_roi(pixel_loc)
+            depthROI = self.primaryDepthImg[ymin:ymax, xmin:xmax]
+            inRange = (threshold_low <= depthROI) & (depthROI <= threshold_high)
+            averageDepth = np.mean(depthROI[inRange])
+
+            if averageDepth >= threshold_low:                
+                # Convert to meters
+                averageDepth /= 1000
+
+                # pixels_new.append(pixel_loc)
+                # z_metric.append(averageDepth)
+                x_metric = averageDepth*((pixel_loc[0]-cx)/fx)
+                y_metric = averageDepth*((pixel_loc[1]-cy)/fy)
+                z_metric = averageDepth
+                metric_points.append([x_metric, y_metric, z_metric])
+                # metric_points.append([z_metric, x_metric, y_metric])
+
+        # print("pixels_new", pixels_new)
+        # print("lines_metric", metric_points)
+
+        #Here I'm getting depth of a single pixel, doing it on a ROI is better
+        # new_pixels = np.flip(pixels, axis=1).astype(int)
+        # z_metric_all = self.primaryDepthImg[tuple(new_pixels.T)]
+                
+        return np.array(metric_points)
     
+    def generate_roi(self, center):
+        delta = 5 # 5 pixels around the center to
+        center = center.astype(int)
+        x_center_new = min(max(center[0], delta), self.primaryDepthImg.shape[1] - delta)
+        y_center_new = min(max(center[1], delta), self.primaryDepthImg.shape[0] - delta)
+
+        return (x_center_new-delta, y_center_new-delta, x_center_new+delta, y_center_new+delta) #xmin ymin xmax y max
+    
+    def remove_duplicates(self, points, threshold=20):
+        diff_elements = np.diff(points[:,0])
+        closest_points = np.where(abs(diff_elements)<threshold)
+        if closest_points[0].size>0:
+            for closest in closest_points[0]:
+                new_point = np.mean(points[closest:closest+2,:], axis=0)
+                points[closest,:] = new_point
+                points[closest+1,:] = math.nan
+            points = points[~np.isnan(points)].reshape(-1,2)
+
+        print("points", points)
+        points_new = deepcopy(points)
+
+        # points_new = np.zeros_like(points)
+        points_new[0,:] = points[0,:]
+        points_new[1,:] = points[2,:]
+        points_new[2,:] = points[1,:]
+        # points_new[3,:] = points[3,:]
+        # points_new[3:,:] = points[3:,:]
+        print("points_new", points_new)
+        return points_new
+               
     def get_pixels(self, t_i, b_i):
         pixels = np.array([[0, t_i], [self.imgHeight - 1, b_i]])
         pixels = pixels.astype('int32')
