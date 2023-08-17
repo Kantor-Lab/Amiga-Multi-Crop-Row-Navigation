@@ -606,8 +606,8 @@ class imageProc:
 
                 # pixels_new.append(pixel_loc)
                 # z_metric.append(averageDepth)
-                x_metric = averageDepth*((pixel_loc[0]-cx)/fx)
-                y_metric = averageDepth*((pixel_loc[1]-cy)/fy)
+                x_metric = averageDepth*((cx - pixel_loc[0])/fx)
+                y_metric = averageDepth*((cy - pixel_loc[1])/fy)
                 z_metric = averageDepth
                 metric_points.append([x_metric, y_metric, z_metric])
                 # metric_points.append([z_metric, x_metric, y_metric])
