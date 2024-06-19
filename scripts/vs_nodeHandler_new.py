@@ -14,7 +14,7 @@ import time
 
 from geometry_msgs.msg import Twist
 import itertools
-
+print("test")
 import message_filters
 
 import tf2_ros
