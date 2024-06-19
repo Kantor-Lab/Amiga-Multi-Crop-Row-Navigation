@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import rospy
-from vs_nodeHandler import vs_nodeHandler 
+from vs_nodeHandler_new import vs_nodeHandler 
 
     
 if __name__ == '__main__':

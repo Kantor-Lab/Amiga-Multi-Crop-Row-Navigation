@@ -7,7 +7,7 @@ import cv2 as cv
 import numpy as np
 from matplotlib import pyplot as plt
 import itertools
-import rospy 
+
 from torch import zero_
 from cv_bridge import CvBridge
 import math
@@ -54,7 +54,7 @@ class imageProc:
 
         self.trackingBoxLoc = []
 
-        self.buffersize = 10
+        self.buffersize = 30
         # features
         self.allLineEnd = []
         self.allLineStart = []
@@ -66,14 +66,13 @@ class imageProc:
         self.trackingWindowOffsBottom = 0
         self.trackingWindowTopScaleRatio = 0.4  # scales the top of the window
 
-        # self.imgHeight, self.imgWidth = 480, 640
-        self.imgHeight = rospy.get_param('imgHeight')
-        self.imgWidth = rospy.get_param('imgWidth')
+        # self.imgHeight, self.imgWidth = 720, 1280# realsense->480, 640, oakd->720, 1280
+        self.imgHeight, self.imgWidth = 480, 640
         self.depth_intrinsics = None  
 
         self.line_ends_metric = None
         self.plants_metric = None   
-        # self.end_of_row_detection = True
+
         # steps create linspace
         self.scanFootSteps = np.linspace(self.scannerParams["scanStartPoint"],
                                          self.scannerParams["scanEndPoint"],
@@ -248,7 +247,7 @@ class imageProc:
         self.pointsInTop = 0
         
         # for all windows
-        print("num of crop rows", self.numOfCropRows)
+        # print("num of crop rows", self.numOfCropRows)
         for boxIdx in range(0, self.numOfCropRows, 1):
             # define window
             if self.isInitialized:
@@ -262,12 +261,10 @@ class imageProc:
                 self.updateTrackingBoxes(boxIdx, lineIntersection)
 
             plantsInCropRow = []
-            # print("plantcenter", self.plantCenters2D[:,])
             for ptIdx in range(self.numPlantsInScene):
                 # checking #points in upper/lower half of the image
-                print("num", ptIdx, boxIdx)
                 self.checkPlantsLocTB(self.plantCenters2D[:, ptIdx])
-                # print("self.plantCenters2D[:, ptIdx]", self.plantCenters2D[:, ptIdx])
+                
                 # if plant center is inside tracking box
                 if self.rowTrackingBoxes[boxIdx].contains(Point(self.plantCenters2D[0, ptIdx], self.plantCenters2D[1, ptIdx])):
                     plantsInCropRow.append(self.plantCenters2D[:, ptIdx])
@@ -283,14 +280,19 @@ class imageProc:
                 l_i, r_i = lineIntersectImgSides(xM, xB, self.imgWidth)
                 # print(xM, xB)
                 # print("row ID:", boxIdx, t_i, b_i, l_i, r_i )
+                # print("plantsInCropRow", np.array(plantsInCropRow))
+                self.plants_metric = self.get_3d_points(np.array(plantsInCropRow))
                 # if the linefit does not return None and the line-image intersections
                 # are within the image bounds
-                # pixels = self.get_pixels(t_i=t_i, b_i=b_i)
-                # points_in_3d = []
-                # for i in range(pixels.shape[0]):
-                #     point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
-                #     points_in_3d.append(point_in_3d)
+                
+                pixels = self.get_pixels(t_i=t_i, b_i=b_i)
+                points_in_3d = []
+                for i in range(pixels.shape[0]):
+                    point_in_3d = self.get3dpoints(depthImg = self.primaryDepthImg, pixels = pixels[i])
+                    points_in_3d.append(point_in_3d)
                 # print("points in 3d", points_in_3d)
+
+
                 if xM is not None and b_i >= 0 and b_i <= self.imgWidth:
                     lines[boxIdx, :] = [xB, xM]
                     # store the window location, which generated these line
@@ -316,7 +318,7 @@ class imageProc:
             for i in range(lines.shape[0]):
                 new_line = self.bufferforlines(line= lines[i], lineID = i)
                 lines[i] = new_line
-        print("lines:", lines)
+        # print("lines:", lines)
         
         return lines, trackingWindows, meanLinesInWindows
 
@@ -360,24 +362,22 @@ class imageProc:
             return False   
 
     def checkPlantsLocTB(self, point):
-        
         if point[1] < self.imgHeight/2:
             self.pointsInTop += 1
         else:
             self.pointsInBottom += 1
-        print(point, self.pointsInTop)
+
     def trackCropLane(self, mode=None):
         """function to get lines at given window locations 
         Returns:
             _type_: _description_
         """
         P, ang = None, None
-        
         # if the feature extractor is initalized
         if self.cropLaneFound:
             # get the lines at windows defined through previous found lines
             lines, linesROIs, meanLinesInWindows = self.findLinesInImage()
-            # print("trackingboxloc", len(self.trackingBoxLoc))
+            print("trackingboxloc", len(self.trackingBoxLoc))
             # if 'all' lines are found by 'self.getLinesInImage'
             if len(lines) >= len(self.trackingBoxLoc):
                 print("len(lines) >=")
@@ -405,16 +405,14 @@ class imageProc:
                 
                 line_ends = self.remove_duplicates(np.vstack((self.allLineStart, self.allLineEnd)))
                 print("line_ends:", line_ends)
-                line_ends = self.points_along_lines(line_ends, lines, 4/5, 1/5)
-                print("line_ends:", line_ends)
                 self.line_ends_metric = self.get_3d_points(line_ends)
 
-                # #test
-                # # pixels = np.array([])
+                #test
+                # pixels = np.array([])
 
-                # print("self.allLineStart", self.allLineStart)
-                # print("self.allLineEnd", self.allLineEnd)
-                # print("metric_line_ends", self.line_ends_metric)
+                print("self.allLineStart", self.allLineStart)
+                print("self.allLineEnd", self.allLineEnd)
+                print("metric_line_ends", self.line_ends_metric)
                 # main features
                 self.P = self.cameraToImage([avgOfLines[1], self.imgHeight])
                 self.ang = computeTheta(self.mainLine_up, self.mainLine_down)
@@ -430,19 +428,14 @@ class imageProc:
         
         if self.pointsInBottom == 0 and self.pointsInTop == 0:
             self.cropLaneFound = False
-        print("points in top and bottom", self.pointsInBottom, self.pointsInTop)
-        print("mode", mode)
+        # print("croprowend:", self.pointsInTop)
         if self.pointsInBottom == 0 and mode in [2, 5]:
             self.cropRowEnd = True
         elif self.pointsInTop == 0 and mode in [1, 4]:
             self.cropRowEnd = True
         else:
             self.cropRowEnd = False
-        # print("end of lane", self.cropRowEnd, self.pointsInBottom, self.pointsInTop, self.plantCenters2D)
-        # if self.pointsInTop == 0:
-        #     print(self.plantCenters2D)
-        #     print(self.plantCenters2D[:,1])
-        # self.end_of_row_detection = True
+        
         return self.cropLaneFound, self.cropRowEnd, P, ang
 
     def processRGBImage(self, rgbImg):
@@ -452,11 +445,11 @@ class imageProc:
         """
         # change datatype to enable negative values for self.greenIDX calculation
         rgbImg = rgbImg.astype('int32')
-        # #LEFT corner & RIGHT corner
-        cols_top = [self.imgWidth*3/13, self.imgWidth*10/13] #self.imgHeight, self.imgWidth
-        cols_bottom = [self.imgWidth*1/15, self.imgWidth*9/10]        #LEFT corner & RIGHT corner
-        # cols_top = [self.imgWidth*0, self.imgWidth*1] #self.imgHeight, self.imgWidth
-        # cols_bottom = [self.imgWidth*0, self.imgWidth*1]
+
+        # cols_top = [self.imgWidth*4/13, self.imgWidth*9/13] #self.imgHeight, self.imgWidth
+        # cols_bottom = [self.imgWidth*3/15, self.imgWidth*9/10]        #LEFT corner & RIGHT corner
+        cols_top = [self.imgWidth*0, self.imgWidth*1] #self.imgHeight, self.imgWidth
+        cols_bottom = [self.imgWidth*0, self.imgWidth*1]
 
         points_mask = np.array([[cols_top[0], 0], [cols_top[1], 0], [cols_bottom[1], self.imgHeight], [cols_bottom[0], self.imgHeight]])
         # mask = np.ones(rgbImg.shape, dtype=np.uint8)
@@ -464,6 +457,8 @@ class imageProc:
         cv.fillPoly(mask, pts=np.int32([points_mask]), color=(255, 255, 255))
 
         rgbImg = cv.bitwise_and(rgbImg, mask)
+
+        # #LEFT corner & RIGHT corner
         # for i in range(3):
         #     for j in range(50,290):
         #         rgbImg[j, : 290 - j -50, i] = 0
@@ -474,7 +469,9 @@ class imageProc:
         #SPLIT MASK
         for i in range(40, self.imgHeight, 30):
             rgbImg[i: i+15, :self.imgWidth, :3] = 0
-        
+
+        # rgbImg[:720, 600:750, :3] = 0
+
         # apply ROI
         rgbImg = self.applyROI(rgbImg)
         #  get green index and binary mask (Otsu is used for extracting the green)
@@ -596,49 +593,32 @@ class imageProc:
         return new_line
         # print("bufferzone", bufferzone)
 
-    def points_along_lines(self, line_ends, lines, portion_start, portion_end):
-        for i in range(len(line_ends)//2):
-            # print(i)
-            line_ends[2*i][1] = self.imgHeight * portion_start
-            line_ends[2*i][0] = lines[i][1] * line_ends[2*i][1] + lines[i][0]
-            line_ends[2*i+1][1] = self.imgHeight * portion_end
-            line_ends[2*i+1][0] = lines[i][1] * line_ends[2*i+1][1] + lines[i][0]
-
-        return line_ends
+    
     def get_3d_points(self, pixels):
         # print("intrinsics:", self.depth_intrinsics)
         fx = self.depth_intrinsics[0]
         fy = self.depth_intrinsics[1]
         cx = self.depth_intrinsics[2]
         cy = self.depth_intrinsics[3]
-        threshold_low = 0.01 * 1000
-        threshold_high = 6 * 1000
-         
+        threshold_low = 0.01
+        threshold_high = 5 
         z_metric = []
         metric_points = []
         # import pdb
         # pdb.set_trace()
         for pixel_loc in pixels:
             xmin, ymin, xmax, ymax = self.generate_roi(pixel_loc)
-            # print("xmin ymin", xmin, ymin, xmax, ymax)
             depthROI = self.primaryDepthImg[ymin:ymax, xmin:xmax]
-            # print("depthROI", depthROI)
             inRange = (threshold_low <= depthROI) & (depthROI <= threshold_high)
-            # print("inrange", inRange)
-            # averageDepth = np.mean(depthROI[inRange])
-            averageDepth = np.mean(depthROI)
-            # print("averagedepth:", averageDepth)
+            averageDepth = np.mean(depthROI[inRange])
+            print("averagedepth:", averageDepth)
             # print("averagedepth:", averageDepth)
             if averageDepth >= threshold_low:                
                 # Convert to meters
-                averageDepth /= 1000
+                # averageDepth /= 1000
 
                 # pixels_new.append(pixel_loc)
                 # z_metric.append(averageDepth)
-                # print("intrinsics", self.depth_intrinsics)
-                # print("intrinsics", cx - pixel_loc[0])
-                # print("intrinsics", cy - pixel_loc[1])
-                # print("pixel", pixel_loc[0], pixel_loc[1])
                 x_metric = averageDepth*((cx - pixel_loc[0])/fx)
                 y_metric = averageDepth*((cy - pixel_loc[1])/fy)
                 z_metric = averageDepth
@@ -672,25 +652,25 @@ class imageProc:
                 points[closest+1,:] = math.nan
             points = points[~np.isnan(points)].reshape(-1,2)
 
-        # print("points", points)
+        print("points", points)
         points_new = deepcopy(points)
 
         # points_new = np.zeros_like(points)
-        # print(points)
         points_new[0,:] = points[0,:]
         points_new[1,:] = points[2,:]
         points_new[2,:] = points[1,:]
         # points_new[3,:] = points[3,:]
         # points_new[3:,:] = points[3:,:]
-        # print("points_new1", points_new)
+        print("points_new", points_new)
         return points_new
     def get3dpoints(self, depthImg, pixels):
         depths = depthImg[pixels[0], pixels[1]]
         print("depth:", depths)
         points_in_3d = np.array([self.imgWidth- pixels[1], pixels[0], depths]).T
-        return points_in_3d
-    
+        return points_in_3d        
     def get_pixels(self, t_i, b_i):
         pixels = np.array([[0, t_i], [self.imgHeight - 1, b_i]])
         pixels = pixels.astype('int32')
         return pixels
+
+    

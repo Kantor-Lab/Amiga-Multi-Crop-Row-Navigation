@@ -2,19 +2,22 @@
 
 # sub
 # simulation
-frontColor_topic: '/left/color/image_raw'
-frontDepth_topic: '/left/aligned_depth_to_color/image_raw'
-frontCameraInfo_topic: '/left/aligned_depth_to_color/camera_info'
-# frontColor_topic: '/hefty_left/rgb/image_raw'
-# frontDepth_topic: '/hefty_left/stereo/image_raw'
-# frontCameraInfo_topic: '/hefty_left/rgb/camera_info'
-# frontColor_topic: '/realsense/color/image_raw'
-# frontDepth_topic: '/realsense/depth/image_rect_raw'
-# frontCameraInfo_topic: '/realsense/color/camera_info'
-backColor_topic: '/left/color/image_raw'
-backDepth_topic: '/left/depth/image_rect_raw'
-backCameraInfo_topic: '/left/color/camera_info'
+# frontColor_topic: '/left/color/image_raw'
+# frontDepth_topic: '/left/aligned_depth_to_color/image_raw'
+# frontCameraInfo_topic: '/left/aligned_depth_to_color/camera_info'
+# frontColor_topic: '/oak/rgb/image_raw'
+# frontDepth_topic: '/oak/stereo/image_raw'
+# frontCameraInfo_topic: '/oak/rgb/camera_info'
+frontColor_topic: '/camera/color/image_raw'
+frontDepth_topic: '/camera/depth/image_raw'
+frontCameraInfo_topic: '/camera/color/camera_info'
+backColor_topic: '/camera/color/image_raw'
+backDepth_topic: '/camera/depth/image_raw'
+backCameraInfo_topic: '/camera/color/camera_info'
 
+# backColor_topic: '/oak/rgb/image_raw'
+# backDepth_topic: '/oak/stereo/image_raw'
+# backCameraInfo_topic: '/oak/rgb/camera_info'
 # thorvald
 # frontColor_topic: '/rs_nav_front/color/image_raw'
 # frontDepth_topic: '/rs_nav_front/aligned_depth_to_color/image_raw'
@@ -31,7 +34,7 @@ useImu: False
 imuTopic: /imu/orientation
 #pub
 # simulation
-cmd_vel_topic: /cmd_vel
+cmd_vel_topic: /cmd_vel_test
 # thorvlad
 # cmd_vel_topic: /twist_mux/cmd_vel
 #  node params
@@ -40,7 +43,7 @@ queue_size: 5
 # processed image size scale
 imgResizeRatio: 100
 # for filtering contours
-minContourArea: 200
+minContourArea: 500
 # stationary debug mode, (without publishing velocity)
 stationaryDebug: False
 # run time params
@@ -64,17 +67,20 @@ minMatchingDifference: 0
 # Threshold for keypoints
 minKeypointNum: 5
 # scanner window params
-scanSteps: 2
+scanSteps: 8
 scanStartPoint: 0
 scanEndPoint: 640
-scanWindowWidth: 320
+scanWindowWidth: 80
 # tracker params
-trackingBoxWidth: 320
+trackingBoxWidth: 160
 topOffset: 0
 bottomOffset: 0
-sacleRatio: 0.25
+sacleRatio: 0.3
 # for dividing bushy rows
 maxCoutourHeight: 120
+#img height and width
+imgHeight: 480
+imgWidth: 640
 #  in case of using bigger size image size, we suggest to set ROI 
 enable_roi: False
 p1: 

@@ -7,7 +7,7 @@ import rospy
 import math
 import cv2 as cv
 import Camera as cam
-import imageProc_old as imc
+import imageProc as imc
 import controller as visualServoingCtl
 import numpy as np
 import time
@@ -22,9 +22,12 @@ import tf_conversions
 import tf2_geometry_msgs
 import image_geometry
 import geometry_msgs.msg
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Float32MultiArray
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image, CameraInfo
+
+from std_msgs.msg import Header
+from dummy_vision.msg import line_2pts, line_list
 
 from featureMatching import *
 
@@ -70,6 +73,9 @@ class vs_nodeHandler:
         self.graphic_pub = rospy.Publisher('vs_nav/graphic',Image, queue_size=1)
         self.mask_pub = rospy.Publisher('vs_nav/mask',Image, queue_size=1)
         self.exg_pub = rospy.Publisher('vs_nav/ExG',Image, queue_size=1)
+        self.plants_metric_pub = rospy.Publisher('vs_nav/metric_plants',Float32MultiArray, queue_size=1)
+        # self.lines_metric_pub = rospy.Publisher('vs_nav/metric_lines',Float32MultiArray, queue_size=1)
+        self.lines_metric_pub = rospy.Publisher('/lines', line_list, queue_size=1)
 
         cmd_vel_topic = rospy.get_param('cmd_vel_topic')
         self.velocity_pub = rospy.Publisher(cmd_vel_topic, Twist, queue_size=1)
@@ -160,8 +166,9 @@ class vs_nodeHandler:
                                             self.trackerParams)
 
         self.cameraModel = image_geometry.PinholeCameraModel()
-        self.frontColor_sub = rospy.Subscriber(
-            self.frontColor_topic, Image, self.front_camera_callback)
+        self.camera_params = None
+        # self.frontColor_sub = rospy.Subscriber(
+        #     self.frontColor_topic, Image, self.front_camera_callback, queue_size=10)
         rospy.loginfo('Detection Camera initialised..')
         print('')
 
@@ -172,12 +179,17 @@ class vs_nodeHandler:
     # main function to guide the robot through crop rows
     def navigate(self):
         # get the currently used image
+        
+        
+        print("in navigation function")
+        # pass
+        # self.imageProcessor.end_of_row_detection = False
         primaryRGB, primaryDepth = self.getProcessingImage(self.frontImg, 
-                                                           self.frontDepth, 
-                                                           self.backImg,
-                                                           self.backDepth)
+                                                        self.frontDepth, 
+                                                        self.backImg,
+                                                        self.backDepth)
         # If the feature extractor is not initialized yet, this has to be done
-        if not self.imageProcessor.findCropLane(primaryRGB, primaryDepth, mode='RGB-D'):
+        if not self.imageProcessor.findCropLane(primaryRGB, primaryDepth, self.camera_params, mode='RGB-D'):
             # this is only False if the initialization in 'setImage' was unsuccessful
             rospy.logwarn("The initialization was unsuccessful!! ")
         else:
@@ -186,8 +198,8 @@ class vs_nodeHandler:
             if self.isFollowingLane() :
                 self.imageProcessor.trackCropLane(self.navigationMode)
                 ctlCommands = self.computeControls(self.imageProcessor.cropLaneFound,
-                                                   self.imageProcessor.P,
-                                                   self.imageProcessor.ang)
+                                                self.imageProcessor.P,
+                                                self.imageProcessor.ang)
 
                 if not self.imageProcessor.cropRowEnd:
                     print("[bold blue]#[INF][/] Following detected Lane ...")
@@ -219,11 +231,11 @@ class vs_nodeHandler:
             else: 
                 # test if the condition for the row switching is fulfilled
                 foundNewCropLane = self.featureMatcher.detectNewCropLane(self.navigationMode,
-                                                                  self.imageProcessor.primaryRGBImg,
-                                                                  self.imageProcessor.greenIDX,
-                                                                  self.imageProcessor.mask, 
-                                                                  self.imageProcessor.rowTrackingBoxes,
-                                                                  self.imageProcessor.numOfCropRows)
+                                                                self.imageProcessor.primaryRGBImg,
+                                                                self.imageProcessor.greenIDX,
+                                                                self.imageProcessor.mask, 
+                                                                self.imageProcessor.rowTrackingBoxes,
+                                                                self.imageProcessor.numOfCropRows)
                 if foundNewCropLane:
                     self.stopRobot(2.0)
                     print("following new Lane !!")
@@ -240,16 +252,18 @@ class vs_nodeHandler:
                     # check Odometry for safty (not to drive so much!)
                     print("[bold blue]#[INF][/] Side motion to find New Lane ...")
 
+        self.publish_3d_points()
+
         self.publishImageTopics()
 
         print("[bold blue]#[INF][/] m:", 
-              self.navigationMode, 
-              "p-cam:", "front" if self.primaryCamera else "back", 
-              "vel-x,y,z",
-              self.velocityMsg.linear.x, 
-              self.velocityMsg.linear.y, 
-              np.around(self.velocityMsg.angular.z, 3),
-              self.imageProcessor.numOfCropRows)
+            self.navigationMode, 
+            "p-cam:", "front" if self.primaryCamera else "back", 
+            "vel-x,y,z",
+            self.velocityMsg.linear.x, 
+            self.velocityMsg.linear.y, 
+            np.around(self.velocityMsg.angular.z, 3),
+            self.imageProcessor.numOfCropRows)
 
     def publishImageTopics(self):
         # Publish the Graphics image
@@ -270,7 +284,7 @@ class vs_nodeHandler:
         self.velocityMsg = Twist()
         self.velocityMsg.linear.x = x
         self.velocityMsg.linear.y = y
-        self.velocityMsg.angular.z = omega
+        self.velocityMsg.angular.z = -omega #- for amiga in simulation
         if not self.stationaryDebug:
             # publish the commands to the robot
             if self.velocityMsg is not None:
@@ -287,6 +301,9 @@ class vs_nodeHandler:
     def frontSyncCallback(self, rgbImage, depthImage, camera_info_msg):
         # self.cameraModel.fromCameraInfo(camera_info_msg)
         # print(self.bridge.imgmsg_to_cv2(depthImage, "32FC1")[479][320])
+        print("in front SYnc")
+        self.camera_params = [camera_info_msg.K[0], camera_info_msg.K[4], camera_info_msg.K[2], camera_info_msg.K[5]] #[fx, fy, cx, cy]
+        print("camera_params", self.camera_params)
         try:
             # Convert your ROS Image message to OpenCV2
             self.frontImg = self.bridge.imgmsg_to_cv2(rgbImage, "bgr8")
@@ -300,21 +317,21 @@ class vs_nodeHandler:
             # Convert the depth image to a Numpy array since most cv functions
             # require Numpy arrays.
             self.frontDepth = np.array(cv_depth, dtype=np.float32)
+            # print("depth shape,", self.frontDepth.shape)
             # Normalize the depth image to fall between 0 (black) and 1 (white)
-            cv.normalize(self.frontDepth, self.frontDepth,
-                          0.0, 1.0, cv.NORM_MINMAX)
+            # cv.normalize(self.frontDepth, self.frontDepth,
+            #               0.0, 1.0, cv.NORM_MINMAX)
+
         except CvBridgeError as e:
             print(e)
 
         # get image size
         self.imgHeight, self.imgWidth, self.imgCh = self.frontImg.shape
-
         # if the image is not empty
-
+        # print("frontimg in S call", self.frontImg)
         if self.frontImg is not None and self.backImg is not None:
             # compute and publish robot controls if the image is currently used
-            print("have front img or back")
-            print("primarycamera", self.primaryCamera)
+            print("pcamera in S call", self.primaryCamera)
             if self.primaryCamera:
                 self.navigate()
     
@@ -346,6 +363,7 @@ class vs_nodeHandler:
         if self.frontImg is not None and self.backImg is not None:
             # compute and publish robot controls if the image is currently used
             if not self.primaryCamera:
+                print("in back S call")
                 self.navigate()
 
     def front_camera_callback(self, data):
@@ -354,18 +372,17 @@ class vs_nodeHandler:
         Args:
             data (_type_): _description_
         """
+        print("in front")
         # get and set new image from the ROS topic
         self.frontImg = self.bridge.imgmsg_to_cv2(data, desired_encoding='rgb8')
         # print("frontimage shape",self.frontImg.shape)
         # get image size
         self.imgHeight, self.imgWidth, self.imgCh = self.frontImg.shape
         # if the image is not empty
-        # rospy.loginfo("This is an info message")
-        print("front img", self.frontImg)
+        # print("frontimg in call", self.frontImg)
         if self.frontImg is not None:
-            print("have front img or back")
-            print("primarycamera", self.primaryCamera)
             # compute and publish robot controls if the image is currently used
+            print("p camera in call", self.primaryCamera)
             if self.primaryCamera:
                 self.navigate()
                        
@@ -383,6 +400,7 @@ class vs_nodeHandler:
         if self.frontImg is not None and self.backImg is not None:
             # compute and publish robot controls if the image is currently used
             if not self.primaryCamera:
+                print("in back call")
                 self.navigate()
 
     def updateNavigationStage(self):
@@ -527,3 +545,90 @@ class vs_nodeHandler:
                 targetList.append(stem)
 
         return targetList
+    
+    def publish_3d_points(self):
+        #n x 3
+        plant_centers_metric = self.imageProcessor.plants_metric
+        #4 x 3
+        line_ends_metric = self.imageProcessor.line_ends_metric
+
+        # transform
+        # PITCH - Y 60 deg
+        # extrinsic_transform = np.array(
+        # [[ 0.5148188, 0, 0.8572990, 0 ],
+        #  [ 0, 1, 0, 0.095],
+        #  [-0.8572990, 0, 0.5148188, 1.57],
+        #  [0, 0, 0, 1]])
+
+        # ectrinsic for realsence in gazebo
+        # extrinsic_transform = np.array(
+        # [[ 0.5148188, 0, 0.8572990, 0.25 ],
+        #  [ 0, 1, 0, 0],
+        #  [-0.8572990, 0, 0.5148188, 1.3],
+        #  [0, 0, 0, 1]])
+        # working extrainsic transform for pitch 1.0 below
+        # extrinsic_transform = np.array(
+        # [[ 0.5403023, 0, 0.8414710,  1],
+        #  [ 0, 1, 0, 0],
+        #  [-0.8414710, 0, 0.5403023, 1.5],
+        #  [0, 0, 0, 1]])
+        # extrinsic_transform = np.array(
+        # [[ 0.5148188, 0, 0.8572990, -1.17 ],
+        #  [ 0, 1, 0, -0.095],
+        #  [-0.8572990, 0, 0.5148188, -0.17],
+        #  [0, 0, 0, 1]])        
+        extrinsic_transform = np.array(
+        [[ 0.5403023, 0, 0.8414710,  1.0],
+         [ 0, 1, 0, 0.015],
+         [-0.8414710, 0, 0.5403023, 1.0],
+         [0, 0, 0, 1]])
+
+        # ROLL - X 60 deg
+        # extrinsic_transform = np.arrray(
+        # [[ 1, 0, 0, 0 ],
+        #  [ 0, 0.5148188, 0.8572990, 0.095],
+        #  [0, -0.8572990, 0.5148188, 1.57],
+        #  [0, 0, 0, 1]])
+        
+        base_pts = []
+        for point in line_ends_metric:
+            oriented_pt = np.array([point[2], point[0], point[1], 1])
+            base_pt = np.matmul(extrinsic_transform, oriented_pt)
+            base_pt = [base_pt[0], base_pt[1], base_pt[2]] 
+            base_pts.append(base_pt)
+
+        print("base frame", base_pts)
+
+        base_pts = sorted(base_pts, key=lambda x: x[1])
+
+        msg = line_list()
+        if base_pts[0][0] > base_pts[1][0]:
+            line_1 = line_2pts(x1=base_pts[0][0], y1=base_pts[0][1],
+                            x2=base_pts[1][0], y2=base_pts[1][1])
+        else:
+            line_1 = line_2pts(x1=base_pts[1][0], y1=base_pts[1][1],
+                            x2=base_pts[0][0], y2=base_pts[0][1])
+        if base_pts[2][0] > base_pts[3][0]:
+            line_2 = line_2pts(x1=base_pts[2][0], y1=base_pts[2][1],
+                            x2=base_pts[3][0], y2=base_pts[3][1])
+        else:
+            line_2 = line_2pts(x1=base_pts[3][0], y1=base_pts[3][1],
+                            x2=base_pts[2][0], y2=base_pts[2][1])
+        msg.lines = [line_1, line_2]
+        msg.num_lines = 2
+
+        msg.header = Header(stamp=rospy.Time.now(), frame_id="left_color_optical_frame")
+        self.lines_metric_pub.publish(msg)
+
+
+        # plant_msg = Float32MultiArray()
+        # plant_msg.header.frame_id = "left_color_optical_frame"
+        # plant_msg.header.stamp = rospy.Time.now()
+        # plant_msg.data = plant_centers_metric
+        # self.plants_metric_pub.publish(plant_msg)
+
+        # line_msg = Float32MultiArray()
+        # line_msg.header.frame_id = "left_color_optical_frame"
+        # line_msg.header.stamp = rospy.Time.now()
+        # line_msg.data = line_ends_metric
+        # self.lines_metric_pub.publish(line_msg)
